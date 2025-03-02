@@ -14,10 +14,36 @@ app.use(cors());
 app.use(helmet());
 app.use(morgan("dev"));
 
+//implementing the rate limiter middleware
+app.use(async (req, res, next) => {
+  try {
+    const decision = await aj.protect(req, { requested: 1 });
+    console.log(decision);
+    if (decision.isDenied()) {
+      if (decision.reason.isRateLimit()) {
+        res.status(429).json({ message: "Too many requests" });
+      } else if (decision.reason.isBot()) {
+        res.status(403).json({ message: "Bots are not allowed" });
+      } else {
+        res.status(403).json({ message: "Forbidden" });
+      }
+
+      return;
+    }
+
+    if (
+      decision.results.some(
+        (result) => result.reason.isBot() && result.reason.isSpoofed()
+      )
+    ) {
+      res.status(403).json({ message: "Spoofed bots are not allowed" });
+      return;
+    }
+    next();
+  } catch (error) {}
+});
+
 app.use("/api/products", productRoutes);
-
-
-
 
 async function initDB() {
   try {
